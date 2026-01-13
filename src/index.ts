@@ -4071,7 +4071,7 @@ Please use the thinking tools:
 const server = new Server(
   {
     name: 'miyabi-mcp-bundle',
-    version: '3.7.0',
+    version: '3.8.0',
   },
   {
     capabilities: {
