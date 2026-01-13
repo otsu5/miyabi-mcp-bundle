@@ -185,15 +185,61 @@ This server exposes paper implementation as MCP tools.
 """
 
 import asyncio
+import importlib
+import importlib.util
 import json
+import os
 import sys
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 class PaperMCPServer:
     """MCP Server wrapper for paper implementation"""
 
-    def __init__(self):
+    def __init__(self, config_path: Optional[str] = None):
         self.name = "paper-implementation"
+        self.config_path = config_path or os.environ.get(
+            "PAPER2AGENT_MCP_CONFIG",
+            str(Path(__file__).parent / "mcp_definition.json")
+        )
+        self.paper_module = None
+        self.tools_cache: Optional[List[Dict]] = None
+        self._load_paper_module()
+
+    def _load_paper_module(self) -> None:
+        """Load the paper implementation module dynamically"""
+        paper_module_path = os.environ.get(
+            "PAPER2AGENT_MODULE_PATH",
+            str(Path(__file__).parent / "paper_impl.py")
+        )
+
+        if not os.path.exists(paper_module_path):
+            # Module not yet implemented - will use stub
+            self.paper_module = None
+            return
+
+        try:
+            spec = importlib.util.spec_from_file_location("paper_impl", paper_module_path)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                sys.modules["paper_impl"] = module
+                spec.loader.exec_module(module)
+                self.paper_module = module
+        except Exception as e:
+            print(f"Warning: Failed to load paper module: {e}", file=sys.stderr)
+            self.paper_module = None
+
+    def _load_mcp_definition(self) -> Dict[str, Any]:
+        """Load MCP definition from JSON file"""
+        if not os.path.exists(self.config_path):
+            return {"tools": []}
+
+        try:
+            with open(self.config_path, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Warning: Failed to load MCP definition: {e}", file=sys.stderr)
+            return {"tools": []}
 
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -206,16 +252,89 @@ class PaperMCPServer:
         Returns:
             Tool execution result
         """
-        # TODO: Implement actual paper code integration
-        return {
-            "success": True,
-            "result": f"Executed {name} with args: {arguments}",
-            "message": "Implementation pending - integrate actual paper code here"
-        }
+        # Check if paper module is loaded
+        if self.paper_module is None:
+            return {
+                "success": False,
+                "error": "Paper implementation module not loaded",
+                "hint": f"Create paper_impl.py with function '{name}' or set PAPER2AGENT_MODULE_PATH"
+            }
 
-    async def list_tools(self) -> list:
-        """List available tools"""
-        # TODO: Load from MCP definition JSON
+        # Get the function from the paper module
+        func = getattr(self.paper_module, name, None)
+        if func is None:
+            return {
+                "success": False,
+                "error": f"Function '{name}' not found in paper implementation",
+                "available_functions": [
+                    attr for attr in dir(self.paper_module)
+                    if callable(getattr(self.paper_module, attr)) and not attr.startswith("_")
+                ]
+            }
+
+        # Execute the function
+        try:
+            if asyncio.iscoroutinefunction(func):
+                result = await func(**arguments)
+            else:
+                result = func(**arguments)
+
+            return {
+                "success": True,
+                "result": result
+            }
+        except TypeError as e:
+            return {
+                "success": False,
+                "error": f"Invalid arguments for '{name}': {e}",
+                "provided_args": list(arguments.keys())
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Execution failed: {e}",
+                "exception_type": type(e).__name__
+            }
+
+    async def list_tools(self) -> List[Dict[str, Any]]:
+        """List available tools from MCP definition JSON"""
+        if self.tools_cache is not None:
+            return self.tools_cache
+
+        # Load from MCP definition JSON
+        mcp_def = self._load_mcp_definition()
+        tools = mcp_def.get("tools", [])
+
+        if tools:
+            self.tools_cache = tools
+            return tools
+
+        # Fallback: Auto-discover from paper module
+        if self.paper_module:
+            discovered_tools = []
+            for attr_name in dir(self.paper_module):
+                if attr_name.startswith("_"):
+                    continue
+                attr = getattr(self.paper_module, attr_name)
+                if callable(attr):
+                    discovered_tools.append({
+                        "name": attr_name,
+                        "description": attr.__doc__ or f"Execute {attr_name} from paper implementation",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "input": {
+                                    "type": "string",
+                                    "description": f"Input for {attr_name}"
+                                }
+                            }
+                        }
+                    })
+            if discovered_tools:
+                self.tools_cache = discovered_tools
+                return discovered_tools
+
+        # Default fallback tool
         return [
             {
                 "name": "execute",
@@ -223,18 +342,22 @@ class PaperMCPServer:
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "query": {"type": "string"}
-                    }
+                        "query": {"type": "string", "description": "Input query"}
+                    },
+                    "required": ["query"]
                 }
             }
         ]
 
 async def main():
     """Main server loop"""
-    server = PaperMCPServer()
+    config_path = sys.argv[1] if len(sys.argv) > 1 else None
+    server = PaperMCPServer(config_path)
 
     # Read stdin for MCP protocol messages
-    async for line in sys.stdin:
+    for line in sys.stdin:
+        if not line.strip():
+            continue
         try:
             request = json.loads(line)
             method = request.get("method")
@@ -247,11 +370,20 @@ async def main():
                 arguments = request.get("params", {}).get("arguments", {})
                 result = await server.call_tool(name, arguments)
                 response = {"result": result}
+            elif method == "initialize":
+                response = {
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": {"name": server.name, "version": "1.0.0"},
+                    "capabilities": {"tools": {}}
+                }
             else:
                 response = {"error": f"Unknown method: {method}"}
 
             print(json.dumps(response), flush=True)
 
+        except json.JSONDecodeError as e:
+            error_response = {"error": f"Invalid JSON: {e}"}
+            print(json.dumps(error_response), flush=True)
         except Exception as e:
             error_response = {"error": str(e)}
             print(json.dumps(error_response), flush=True)
@@ -268,11 +400,125 @@ EOF
 # Add paper-specific dependencies here
 EOF
 
+  # Generate paper_impl.py template
+  cat > "$server_dir/paper_impl.py" <<'PAPEREOF'
+#!/usr/bin/env python3
+"""
+Paper Implementation Module
+Auto-generated template - implement your paper's functions here.
+
+This module is dynamically loaded by the MCP server.
+Each public function becomes an available tool.
+"""
+
+from typing import Any, Dict, List, Optional
+import json
+
+
+# ============================================================
+# Example function template
+# Replace with actual paper implementation
+# ============================================================
+
+def execute(query: str) -> Dict[str, Any]:
+    """
+    Main execution function for the paper implementation.
+
+    Args:
+        query: Input query or data to process
+
+    Returns:
+        Processing result
+    """
+    # TODO: Implement actual paper algorithm here
+    return {
+        "status": "not_implemented",
+        "query": query,
+        "message": "Replace this with your paper implementation"
+    }
+
+
+def analyze(input_data: str, options: Optional[Dict] = None) -> Dict[str, Any]:
+    """
+    Analyze input data using paper methodology.
+
+    Args:
+        input_data: Data to analyze
+        options: Optional configuration
+
+    Returns:
+        Analysis results
+    """
+    options = options or {}
+    # TODO: Implement paper analysis logic
+    return {
+        "status": "not_implemented",
+        "input_length": len(input_data),
+        "options": options
+    }
+
+
+def transform(data: str, mode: str = "default") -> Dict[str, Any]:
+    """
+    Transform data using paper approach.
+
+    Args:
+        data: Input data
+        mode: Transformation mode
+
+    Returns:
+        Transformed data
+    """
+    # TODO: Implement paper transformation
+    return {
+        "status": "not_implemented",
+        "mode": mode,
+        "original_data": data[:100] + "..." if len(data) > 100 else data
+    }
+
+
+# ============================================================
+# Add your paper-specific functions below
+# ============================================================
+
+# Example: If your paper implements a specific algorithm
+#
+# def paper_algorithm(input_tensor, hyperparameter=0.5):
+#     """
+#     Implements the main algorithm from the paper.
+#
+#     Args:
+#         input_tensor: Input data
+#         hyperparameter: Algorithm tuning parameter
+#
+#     Returns:
+#         Algorithm output
+#     """
+#     # Your implementation here
+#     pass
+PAPEREOF
+
+  chmod +x "$server_dir/paper_impl.py"
+
+  # Copy MCP definition for tool loading
+  if [ -f "$output_file" ]; then
+    cp "$output_file" "$server_dir/mcp_definition.json"
+  fi
+
   # Generate README
   cat > "$server_dir/README.md" <<EOF
 # Paper2Agent MCP Server: $server_name
 
 Auto-generated MCP server from paper analysis.
+
+## Files
+
+| File | Description |
+|------|-------------|
+| \`mcp_server.py\` | MCP protocol server |
+| \`paper_impl.py\` | Paper implementation (edit this!) |
+| \`mcp_definition.json\` | Tool definitions |
+| \`requirements.txt\` | Python dependencies |
 
 ## Installation
 
@@ -282,20 +528,55 @@ pip install -r requirements.txt
 
 ## Usage
 
-\`\`\`bash
-# Test server
-python mcp_server.py
+### 1. Implement Paper Functions
 
-# Register in Miyabi
-miyabi mcp register paper-$mcp_name
+Edit \`paper_impl.py\` to add your paper's implementation:
+
+\`\`\`python
+def my_algorithm(input_data: str, param: float = 0.5):
+    \"\"\"Your paper's main algorithm.\"\"\"
+    # Implement here
+    return {"result": processed_data}
 \`\`\`
 
-## TODO
+### 2. Test Server
 
-1. Integrate actual paper code
-2. Add proper error handling
-3. Implement paper-specific tools
-4. Add validation tests
+\`\`\`bash
+# Run server
+python mcp_server.py
+
+# Test with JSON-RPC
+echo '{"method":"tools/list"}' | python mcp_server.py
+\`\`\`
+
+### 3. Register in Claude
+
+Add to \`claude_desktop_config.json\`:
+
+\`\`\`json
+{
+  "mcpServers": {
+    "paper-$mcp_name": {
+      "command": "python",
+      "args": ["$(pwd)/mcp_server.py"]
+    }
+  }
+}
+\`\`\`
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| \`PAPER2AGENT_MODULE_PATH\` | Custom path to paper_impl.py |
+| \`PAPER2AGENT_MCP_CONFIG\` | Custom path to mcp_definition.json |
+
+## Development
+
+1. Edit \`paper_impl.py\` with your paper's functions
+2. Update \`mcp_definition.json\` tool schemas if needed
+3. Add dependencies to \`requirements.txt\`
+4. Test with MCP Inspector or Claude Desktop
 EOF
 
   log "Python MCP server generated at $server_dir"
