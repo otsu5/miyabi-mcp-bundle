@@ -1,0 +1,23 @@
+{
+  "project": "miyabi-mcp-bundle",
+  "description": "Miyabi All-in-One MCP Server - 75+ tools for Claude Desktop & AI agents",
+  "repository": "ShunsukeHayashi/miyabi-mcp-bundle",
+  "status": "active",
+  "active_tasks": [
+    {
+      "title": "新規MCPツール追加",
+      "priority": "P2-LOW",
+      "status": "todo"
+    },
+    {
+      "title": "既存ツールの改善",
+      "priority": "P2-LOW",
+      "status": "todo"
+    },
+    {
+      "title": "ドキュメント更新",
+      "priority": "P2-LOW",
+      "status": "todo"
+    }
+  ]
+}
