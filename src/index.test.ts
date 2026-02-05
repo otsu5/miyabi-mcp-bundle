@@ -108,6 +108,32 @@ describe('Miyabi MCP Bundle', () => {
     });
   });
 
+  describe('Resources API', () => {
+    it('resources/list のハンドラが登録されていること', async () => {
+      const fs = await import('fs/promises');
+      const indexContent = await fs.readFile('./src/index.ts', 'utf-8');
+
+      expect(indexContent).toContain('ListResourcesRequestSchema');
+      expect(indexContent).toContain('server.setRequestHandler(ListResourcesRequestSchema');
+    });
+
+    it('resources/templates/list のハンドラが登録されていること', async () => {
+      const fs = await import('fs/promises');
+      const indexContent = await fs.readFile('./src/index.ts', 'utf-8');
+
+      expect(indexContent).toContain('ListResourceTemplatesRequestSchema');
+      expect(indexContent).toContain('server.setRequestHandler(ListResourceTemplatesRequestSchema');
+    });
+
+    it('resources 配列が空でないこと', async () => {
+      const fs = await import('fs/promises');
+      const indexContent = await fs.readFile('./src/index.ts', 'utf-8');
+      const count = indexContent.split("miyabi://").length - 1;
+
+      expect(count).toBeGreaterThan(0);
+    });
+  });
+
   describe('Version Consistency', () => {
     it('should have matching version in package.json and index.ts', async () => {
       const fs = await import('fs/promises');

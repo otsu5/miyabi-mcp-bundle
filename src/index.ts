@@ -38,11 +38,13 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
   Tool,
   Resource,
+  ResourceTemplate,
   Prompt
 } from '@modelcontextprotocol/sdk/types.js';
 import { simpleGit, SimpleGit } from 'simple-git';
@@ -419,6 +421,9 @@ const resources: Resource[] = [
     mimeType: 'application/json'
   }
 ];
+
+// ========== Resource Templates ==========
+const resourceTemplates: ResourceTemplate[] = [];
 
 // ========== Prompts ==========
 const prompts: Prompt[] = [
@@ -4104,6 +4109,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Resource handlers
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return { resources };
+});
+
+server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+  return { resourceTemplates };
 });
 
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {

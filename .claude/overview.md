@@ -7,7 +7,7 @@ last_updated: "2025-12-26"
 
 **Version**: 3.7.0
 **Total Tools**: 172
-**Skills**: 9
+**Skills**: 10
 
 ---
 
@@ -20,6 +20,7 @@ last_updated: "2025-12-26"
 | `docker-management` | Docker containers and compose | "docker ps", "logs", "compose" | 14 |
 | `system-monitoring` | CPU, memory, disk, network stats | "system status", "health check" | 10 |
 | `network-diagnostics` | Ping, DNS, ports, HTTP tests | "ping", "DNS lookup", "port check" | 15 |
+| `resource-discovery` | Resource URI discovery and templates | "resources/list", "resource templates", "miyabi://" | 0 |
 | `kubernetes-operations` | Pods, services, deployments | "pods", "k8s logs", "debug pod" | 6 |
 | `log-analysis` | Log reading, search, filtering | "read logs", "find error" | 7 |
 | `process-management` | Processes and tmux sessions | "kill process", "tmux" | 24 |
@@ -66,6 +67,13 @@ Layer 3: Full tool definitions               ← On execution
 1. **User mentions trigger keywords** → Load corresponding skill
 2. **User asks about capability** → Show relevant skill from overview
 3. **Complex task matching skill** → Load and follow skill workflow
+
+---
+
+## ルール
+
+`./.claude/rules/` にプロジェクト固有のルールを配置しています。  
+自動で読み込まれない場合は、`~/.claude/rules/` へコピー/リンクして適用してください。
 
 ---
 
