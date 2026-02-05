@@ -1,0 +1,9 @@
+# Resource Discovery Rules
+# 目的: リソース探索時に resources/list と resources/templates/list を優先使用する
+
+[trigger]
+keywords = ["resources/list", "resources/templates/list", "リソース一覧", "テンプレート一覧", "miyabi://"]
+
+[behavior]
+priority = "high"
+notes = "リソース探索時はまず一覧を提示し、必要に応じて resources/read を実行する"

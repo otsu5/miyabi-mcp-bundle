@@ -20,6 +20,10 @@
       "path": ".claude/skills/network-diagnostics",
       "enabled": true
     },
+    "resource-discovery": {
+      "path": ".claude/skills/resource-discovery",
+      "enabled": true
+    },
     "kubernetes-operations": {
       "path": ".claude/skills/kubernetes-operations",
       "enabled": true
@@ -36,6 +40,10 @@
       "path": ".claude/skills/sequential-thinking",
       "enabled": true
     }
+  },
+  "rules": {
+    "path": ".claude/rules",
+    "enabled": true
   },
   "permissions": {
     "allow": [
